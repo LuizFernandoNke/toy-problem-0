@@ -7,3 +7,8 @@
 __pycache__/
 *.pyc
 *.log
+template_case/processor*
+template_case/postProcessing
+template_case/constant/polyMesh
+template_case/0/
+template_case/[1-9]*
