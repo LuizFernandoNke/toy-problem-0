@@ -1,3 +1,5 @@
+import cmd
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -111,10 +113,18 @@ if __name__ == "__main__":
 
     #automatically generate the mesh using blockMesh command
     print("Executing blockMesh in OpenFOAM...")
-    result = subprocess.run(["blockMesh", "-case", "template_case"], capture_output=True, text=True)
-    
-    if result.returncode == 0:
-        print("Mesh successfully generated!")
-    else:
-        print("Error generating mesh:")
-        print(result.stderr)
+
+cmd = "source /usr/lib/openfoam/openfoam2606/etc/bashrc && blockMesh -case template_case"
+
+result = subprocess.run(
+    cmd,
+    shell=True,
+    executable="/bin/bash",
+    capture_output=True,
+    text=True,
+    env=os.environ.copy()
+)
+
+if result.returncode != 0:
+    print(f"Error generating mesh:\n{result.stderr}")
+    exit(1)

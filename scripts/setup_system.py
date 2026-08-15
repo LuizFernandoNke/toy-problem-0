@@ -1,123 +1,236 @@
+import os
 import sys
-import subprocess
-import re
-import math
 from pathlib import Path
 
-# Add root directory to path
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+# Diretórios base
+ROOT_DIR = Path(__file__).resolve().parent.parent
+CASE_DIR = ROOT_DIR / "template_case"
 
-from config.simulation_config import SimulationConfig
 
-def get_simulated_inlet_pressure(case_dir: Path) -> float:
-    """Executes OpenFOAM patchAverage utility to get average pressure at the inlet."""
-    cmd = ["postProcess", "-case", str(case_dir), "-func", "patchAverage(name=inlet, p)", "-latestTime"]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    
-    match = re.search(r"areaAverage\(inlet\)\s+of\s+p\s+=\s+([-+]?\d*\.\d+|\d+)", result.stdout)
-    if match:
-        return float(match.group(1))
-    
-    match_alt = re.search(r"patchAverage\(inlet,\s*p\)\s*=\s*([-+]?\d*\.\d+|\d+)", result.stdout)
-    if match_alt:
-        return float(match_alt.group(1))
-        
-    raise ValueError("Could not parse inlet pressure from postProcess output.")
+def setup_control_dict(case_dir: Path):
+    """Gera o arquivo system/controlDict."""
+    content = """/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                 |                                                 |
+| \\\\      / F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /  O peration     | Version:  2606                                  |
+|   \\\\  /   A nd            | Website:  www.openfoam.com                      |
+|    \\\\/    M anipulation   |                                                 |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      controlDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-def get_wall_yplus(case_dir: Path) -> dict:
-    """Executes simpleFoam yPlus utility and parses min, max, and average y+ for the wall patch."""
-    cmd = ["simpleFoam", "-case", str(case_dir), "-postProcess", "-func", "yPlus", "-latestTime"]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    
-    stdout = result.stdout
+application     simpleFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         1000;
+deltaT          1;
+writeControl    timeStep;
+writeInterval   100;
+purgeWrite      0;
+writeFormat     ascii;
+writePrecision  6;
+writeCompression off;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable true;
 
-    # Pattern 1: Standard patch output (e.g., "Patch walls y+ : min = 12.3, max = 45.6, average = 28.4")
-    pattern_patch = r"Patch\s+walls\s+y\+\s*:\s*min\s*=\s*([0-9.eE+-]+)\s*,\s*max\s*=\s*([0-9.eE+-]+)\s*,\s*average\s*=\s*([0-9.eE+-]+)"
-    match = re.search(pattern_patch, stdout, re.IGNORECASE)
-    
-    if match:
-        return {
-            "min": float(match.group(1)),
-            "max": float(match.group(2)),
-            "avg": float(match.group(3))
-        }
+// ************************************************************************* //
+"""
+    system_dir = case_dir / "system"
+    system_dir.mkdir(parents=True, exist_ok=True)
+    with open(system_dir / "controlDict", "w", encoding="utf-8") as f:
+        f.write(content)
 
-    # Pattern 2: v2606 multi-line format where 'walls' is printed before min/max/avg lines
-    pattern_multiline = r"walls[\s\S]*?min\s*=\s*([0-9.eE+-]+)[\s\S]*?max\s*=\s*([0-9.eE+-]+)[\s\S]*?average\s*=\s*([0-9.eE+-]+)"
-    match_multi = re.search(pattern_multiline, stdout, re.IGNORECASE)
 
-    if match_multi:
-        return {
-            "min": float(match_multi.group(1)),
-            "max": float(match_multi.group(2)),
-            "avg": float(match_multi.group(3))
-        }
+def setup_fv_schemes(case_dir: Path):
+    """Gera o arquivo system/fvSchemes com a entrada wallDist necessária."""
+    content = """/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                 |                                                 |
+| \\\\      / F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /  O peration     | Version:  2606                                  |
+|   \\\\  /   A nd            | Website:  www.openfoam.com                      |
+|    \\\\/    M anipulation   |                                                 |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      fvSchemes;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-    # Pattern 3: Generic mesh overall y+ summary line
-    pattern_generic = r"y\+\s*:\s*min\s*=\s*([0-9.eE+-]+)\s*,\s*max\s*=\s*([0-9.eE+-]+)\s*,\s*average\s*=\s*([0-9.eE+-]+)"
-    match_gen = re.search(pattern_generic, stdout, re.IGNORECASE)
+ddtSchemes
+{
+    default         steadyState;
+}
 
-    if match_gen:
-        return {
-            "min": float(match_gen.group(1)),
-            "max": float(match_gen.group(2)),
-            "avg": float(match_gen.group(3))
-        }
+gradSchemes
+{
+    default         Gauss linear;
+}
 
-    return {"min": 0.0, "max": 0.0, "avg": 0.0}
+divSchemes
+{
+    default         none;
+    div(phi,U)      bounded Gauss linearUpwind grad(U);
+    div(phi,k)      bounded Gauss upwind;
+    div(phi,omega)  bounded Gauss upwind;
+    div((nuEff*dev2(T(grad(U))))) Gauss linear;
+}
 
-def verify_results():
-    cfg = SimulationConfig()
-    case_dir = Path("template_case")
+laplacianSchemes
+{
+    default         Gauss linear corrected;
+}
 
-    # Theoretical calculations
-    re_num = cfg.reynolds_number
-    f_darcy = 0.25 / (math.log10(5.74 / (re_num ** 0.9))) ** 2
-    dp_theory_pa = f_darcy * (cfg.length / cfg.diameter) * (0.5 * cfg.density * (cfg.velocity_inlet ** 2))
-    dp_kinematic_theory = dp_theory_pa / cfg.density
+interpolationSchemes
+{
+    default         linear;
+}
 
-    print("=" * 55)
-    print("SIMULATION VERIFICATION REPORT")
-    print("=" * 55)
-    print(f"Reynolds Number (Re)      : {re_num:.2f}")
-    print(f"Theoretical Darcy f      : {f_darcy:.5f}")
-    print(f"Theoretical ΔP (Kinematic): {dp_kinematic_theory:.4f} m²/s² ({dp_theory_pa:.2f} Pa)")
-    print("-" * 55)
+snGradSchemes
+{
+    default         corrected;
+}
 
-    try:
-        p_inlet_sim = get_simulated_inlet_pressure(case_dir)
-        yplus_data = get_wall_yplus(case_dir)
-        error = abs(p_inlet_sim - dp_kinematic_theory) / dp_kinematic_theory * 100
+wallDist
+{
+    method          meshWave;
+}
 
-        print(f"Simulated ΔP (Kinematic) : {p_inlet_sim:.4f} m²/s² ({p_inlet_sim * cfg.density:.2f} Pa)")
-        print(f"Relative Error            : {error:.2f}%")
-        print("-" * 55)
-        print("WALL DISTANCE METRICS (y+)")
-        print(f"Wall y+ (Min / Max / Avg) : {yplus_data['min']:.2f} / {yplus_data['max']:.2f} / {yplus_data['avg']:.2f}")
-        
-        # y+ regime advice
-        if yplus_data['avg'] < 1.0:
-            print("y+ Status                 : Optimal for low-Re viscous sublayer resolution (y+ < 1)")
-        elif 30.0 <= yplus_data['avg'] <= 300.0:
-            print("y+ Status                 : Optimal for standard wall functions (30 < y+ < 300)")
-        else:
-            print("y+ Status                 : In buffer layer (1 < y+ < 30). Consider adjusting mesh.")
-            
-        print("=" * 55)
+// ************************************************************************* //
+"""
+    system_dir = case_dir / "system"
+    system_dir.mkdir(parents=True, exist_ok=True)
+    with open(system_dir / "fvSchemes", "w", encoding="utf-8") as f:
+        f.write(content)
 
-        # Comparative evaluation and status output
-        if error < 5.0:
-            print("VERIFICATION SUCCESS: CFD results match theory within 5% error!")
-        else:
-            print(f"Difference exceeds 5% (Current: {error:.2f}%).")
-            if yplus_data['avg'] > 30.0:
-                print("Tip: High y+ uses wall functions. To reduce error below 5%, refine mesh near walls towards y+ ~ 1.")
-            else:
-                print("Tip: Check mesh resolution or evaluate ΔP across the fully developed region.")
-        print("=" * 55)
 
-    except Exception as err:
-        print(f"Post-processing error: {err}")
+def setup_fv_solution(case_dir: Path):
+    """Gera o arquivo system/fvSolution."""
+    content = """/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                 |                                                 |
+| \\\\      / F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /  O peration     | Version:  2606                                  |
+|   \\\\  /   A nd            | Website:  www.openfoam.com                      |
+|    \\\\/    M anipulation   |                                                 |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      fvSolution;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+solvers
+{
+    p
+    {
+        solver          GAMG;
+        tolerance       1e-06;
+        relTol          0.01;
+        smoother        GaussSeidel;
+    }
+
+    U
+    {
+        solver          smoothSolver;
+        smoother        GaussSeidel;
+        tolerance       1e-05;
+        relTol          0.1;
+    }
+
+    "(k|omega)"
+    {
+        solver          smoothSolver;
+        smoother        GaussSeidel;
+        tolerance       1e-05;
+        relTol          0.1;
+    }
+}
+
+SIMPLE
+{
+    nNonOrthogonalCorrectors 0;
+    consistent      yes;
+
+    residualControl
+    {
+        p               1e-4;
+        U               1e-4;
+        "(k|omega)"     1e-4;
+    }
+}
+
+relaxationFactors
+{
+    equations
+    {
+        U               0.7;
+        k               0.7;
+        omega           0.7;
+    }
+}
+
+// ************************************************************************* //
+"""
+    system_dir = case_dir / "system"
+    system_dir.mkdir(parents=True, exist_ok=True)
+    with open(system_dir / "fvSolution", "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def setup_decompose_par(case_dir: Path, num_processors: int = 10):
+    """Gera o decomposeParDict usando o método Scotch com o cabeçalho FoamFile correto."""
+    content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                 |                                                 |
+| \\\\      / F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /  O peration     | Version:  2606                                  |
+|   \\\\  /   A nd            | Website:  www.openfoam.com                      |
+|    \\\\/    M anipulation   |                                                 |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      decomposeParDict;
+}}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+numberOfSubdomains  {num_processors};
+
+method              scotch;
+
+// ************************************************************************* //
+"""
+    system_dir = case_dir / "system"
+    system_dir.mkdir(parents=True, exist_ok=True)
+    with open(system_dir / "decomposeParDict", "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def main():
+    setup_control_dict(CASE_DIR)
+    setup_fv_schemes(CASE_DIR)
+    setup_fv_solution(CASE_DIR)
+    setup_decompose_par(CASE_DIR, num_processors=10)
+    print("System files (controlDict, fvSchemes, fvSolution, decomposeParDict) generated successfully.")
+
 
 if __name__ == "__main__":
-    verify_results()
+    main()

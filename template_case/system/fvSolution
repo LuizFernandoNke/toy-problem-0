@@ -1,9 +1,9 @@
 /*--------------------------------*- C++ -*----------------------------------*\
 | =========                 |                                                 |
-| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     | Version:  v2312                                 |
-|   \\  /    A nd           | Website:  www.openfoam.com                      |
-|    \\/     M anipulation  |                                                 |
+| \\      / F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /  O peration     | Version:  2606                                  |
+|   \\  /   A nd            | Website:  www.openfoam.com                      |
+|    \\/    M anipulation   |                                                 |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -25,11 +25,19 @@ solvers
         smoother        GaussSeidel;
     }
 
-    "(U|k|omega)"
+    U
     {
         solver          smoothSolver;
-        smoother        symGaussSeidel;
-        tolerance       1e-06;
+        smoother        GaussSeidel;
+        tolerance       1e-05;
+        relTol          0.1;
+    }
+
+    "(k|omega)"
+    {
+        solver          smoothSolver;
+        smoother        GaussSeidel;
+        tolerance       1e-05;
         relTol          0.1;
     }
 }
@@ -43,8 +51,7 @@ SIMPLE
     {
         p               1e-4;
         U               1e-4;
-        k               1e-4;
-        omega           1e-4;
+        "(k|omega)"     1e-4;
     }
 }
 
@@ -55,10 +62,6 @@ relaxationFactors
         U               0.7;
         k               0.7;
         omega           0.7;
-    }
-    fields
-    {
-        p               0.3;
     }
 }
 
