@@ -9,33 +9,38 @@ FoamFile
 {
     version     2.0;
     format      ascii;
-    class       volVectorField;
-    location    "0";
-    object      U;
+    class       dictionary;
+    location    "system";
+    object      sampleDict;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-dimensions      [0 1 -1 0 0 0 0];
+type            surfaces;
+surfaceFormat   raw;
+fields          (p);
 
-internalField   uniform (1.5 0 0);
-
-boundaryField
-{
-    inlet
+surfaces
+(
+    plane_start
     {
-        type            fixedValue;
-        internalField   uniform (1.5 0 0);
+        type            plane;
+        planeType       pointAndNormal;
+        pointAndNormalDict
+        {
+            point   (0 0 1.4000);
+            normal  (0 0 1);
+        }
     }
-
-    outlet
+    plane_end
     {
-        type            zeroGradient;
+        type            plane;
+        planeType       pointAndNormal;
+        pointAndNormalDict
+        {
+            point   (0 0 1.8000);
+            normal  (0 0 1);
+        }
     }
-
-    walls
-    {
-        type            noSlip;
-    }
-}
+);
 
 // ************************************************************************* //

@@ -15,7 +15,9 @@ def generate_blockmesh_dict(cfg: SimulationConfig, output_path: Path):
     L = cfg.length
     
     #mesh resolution parameters (number of cells in each direction)
-    nx, ny, nz = 20, 20, 100 
+    nx = int(20 * cfg.mesh_factor)
+    ny = int(20 * cfg.mesh_factor)
+    nz = int(100 * cfg.mesh_factor)
 
     content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |

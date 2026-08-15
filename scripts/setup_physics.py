@@ -8,13 +8,12 @@ from config.simulation_config import SimulationConfig
 
 def setup_physics_files(cfg: SimulationConfig, case_dir: Path):
     """Generates 0/U, 0/p, and constant/transportProperties for OpenFOAM."""
-  
-    nu_value = cfg.kinematic_viscosity
-
+    
+    # Write constant/transportProperties
     transport_props = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2312                                 |
+|  \\\\    /   O peration     | Version:  v2606                                 |
 |   \\\\  /    A nd           | Website:  www.openfoam.com                      |
 |    \\\\/     M anipulation  |                                                 |
 \\*---------------------------------------------------------------------------*/
@@ -28,9 +27,9 @@ FoamFile
 }}
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-transportModel  singlePhase;
+transportModel  Newtonian;
 
-nu              [0 2 -1 0 0 0 0] {nu_value:.7e};
+nu              [0 2 -1 0 0 0 0] {cfg.kinematic_viscosity:.7e};
 
 // ************************************************************************* //
 """
@@ -39,10 +38,11 @@ nu              [0 2 -1 0 0 0 0] {nu_value:.7e};
     with open(transport_path, "w", encoding="utf-8") as f:
         f.write(transport_props)
 
+    # Write 0/U (Velocity Boundary Conditions)
     u_file = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2312                                 |
+|  \\\\    /   O peration     | Version:  v2606                                 |
 |   \\\\  /    A nd           | Website:  www.openfoam.com                      |
 |    \\\\/     M anipulation  |                                                 |
 \\*---------------------------------------------------------------------------*/
@@ -58,14 +58,14 @@ FoamFile
 
 dimensions      [0 1 -1 0 0 0 0];
 
-internalField   uniform ({cfg.velocity_inlet} 0 0);
+internalField   uniform (0 0 {cfg.velocity_inlet});
 
 boundaryField
 {{
     inlet
     {{
         type            fixedValue;
-        internalField   uniform ({cfg.velocity_inlet} 0 0);
+        value           uniform (0 0 {cfg.velocity_inlet});
     }}
 
     outlet
@@ -86,10 +86,11 @@ boundaryField
     with open(u_path, "w", encoding="utf-8") as f:
         f.write(u_file)
 
+    # Write 0/p (Kinematic Pressure Boundary Conditions)
     p_file = """/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /   O peration     | Version:  v2312                                 |
+|  \\\\    /   O peration     | Version:  v2606                                 |
 |   \\\\  /    A nd           | Website:  www.openfoam.com                      |
 |    \\\\/     M anipulation  |                                                 |
 \\*---------------------------------------------------------------------------*/
@@ -133,7 +134,7 @@ boundaryField
     with open(p_path, "w", encoding="utf-8") as f:
         f.write(p_file)
 
-    print("Physical boundary conditions and fluid properties generated")
+    print("Physical boundary conditions generated successfully.")
 
 if __name__ == "__main__":
     config = SimulationConfig()
