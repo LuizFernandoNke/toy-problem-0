@@ -46,10 +46,16 @@ def clean_previous_runs():
         if post_dir.exists():
             shutil.rmtree(post_dir)
             print("   Removed postProcessing directory")
+            
+        # Limpa também o log antigo da simulação anterior
+        log_file = CASE_DIR / "simpleFoam.log"
+        if log_file.exists():
+            log_file.unlink()
+            print("   Removed old simpleFoam.log")
 
 
-def run_step(description: str, command: list[str]):
-    """Executa um comando do sistema garantindo o carregamento correto do ambiente."""
+def run_step(description: str, command: list[str], log_file_path: Path = None):
+    """Executa um comando do sistema garantindo o carregamento correto do ambiente e opcionalmente salva logs em arquivo."""
     print(f"\nRunning: {description}")
     
     current_env = os.environ.copy()
@@ -59,9 +65,14 @@ def run_step(description: str, command: list[str]):
         result = subprocess.run(command, capture_output=False, text=True, env=current_env)
     else:
         # Se for um utilitário do OpenFOAM ou MPI
-        full_cmd = OF_ENV + " " + " ".join(command)
+        full_cmd_str = OF_ENV + " " + " ".join(command)
+        
+        # Redireciona a saída para o arquivo de log se o caminho for fornecido
+        if log_file_path:
+            full_cmd_str += f" > {log_file_path} 2>&1"
+
         result = subprocess.run(
-            full_cmd,
+            full_cmd_str,
             shell=True,
             executable="/bin/bash",
             capture_output=False,
@@ -89,10 +100,15 @@ def main():
     
     # Steps do solver em paralelo
     run_step("Decomposing domain with Scotch", ["decomposePar", "-case", str(CASE_DIR)])
+    
+    #run simpleFOAM and write log to file
+    log_file = CASE_DIR / "simpleFoam.log"
     run_step(
         f"Running simpleFoam in parallel on {NUM_PROCESSORS} cores", 
-        ["mpirun", "-np", str(NUM_PROCESSORS), "simpleFoam", "-parallel", "-case", str(CASE_DIR)]
+        ["mpirun", "-np", str(NUM_PROCESSORS), "simpleFoam", "-parallel", "-case", str(CASE_DIR)],
+        log_file_path=log_file
     )
+    
     run_step("Reconstructing parallel domain fields", ["reconstructPar", "-latestTime", "-case", str(CASE_DIR)])
     
     # Step de pós-processamento

@@ -1,5 +1,6 @@
 import sys
 import subprocess
+import os
 import re
 import math
 from pathlib import Path
@@ -30,7 +31,6 @@ def get_simulated_inlet_pressure(case_dir: Path) -> float:
                 with open(latest_file, "r", encoding="utf-8") as f:
                     lines = [line.strip() for line in f if line.strip() and not line.startswith("#")]
                     if lines:
-                        # Pega o último registro (coluna 1 é o tempo, coluna 2 é a pressão)
                         last_line = lines[-1].split()
                         return float(last_line[1])
 
@@ -66,6 +66,41 @@ def get_wall_yplus(case_dir: Path) -> dict:
     return {"min": 0.0, "max": 0.0, "avg": 0.0}
 
 
+def get_performance_metrics():
+    """Extrai número de núcleos, tamanho da malha e tempo de execução."""
+    # 1. Tamanho da malha (número de células em polyMesh/owner)
+    owner_path = "template_case/constant/polyMesh/owner"
+    num_cells = "N/A"
+    if os.path.exists(owner_path):
+        with open(owner_path, 'r') as f:
+            content = f.read()
+            match = re.search(r'nCells:\s*(\d+)', content)
+            if match:
+                num_cells = match.group(1)
+
+    # 2. Número de núcleos usados
+    decomp_path = "template_case/system/decomposeParDict"
+    num_cores = "N/A"
+    if os.path.exists(decomp_path):
+        with open(decomp_path, 'r') as f:
+            for line in f:
+                if "numberOfSubdomains" in line:
+                    num_cores = line.split()[1].rstrip(';')
+                    break
+
+    # 3. Tempo total gasto (extraído do log do solver)
+    log_path = "template_case/simpleFoam.log"
+    execution_time = "N/A"
+    if os.path.exists(log_path):
+        with open(log_path, 'r') as f:
+            for line in reversed(f.readlines()):
+                if "ClockTime" in line or "ExecutionTime" in line:
+                    execution_time = line.strip()
+                    break
+
+    return num_cores, num_cells, execution_time
+
+
 def verify_results():
     cfg = SimulationConfig()
     case_dir = Path("template_case")
@@ -76,7 +111,7 @@ def verify_results():
     dp_kinematic_theory = dp_theory_pa / cfg.density
 
     print("=" * 60)
-    print(" 📊 SIMULATION VERIFICATION REPORT")
+    print("SIMULATION VERIFICATION REPORT")
     print("=" * 60)
     print(f"Reynolds Number (Re)      : {re_num:.2f}")
     print(f"Theoretical Darcy f      : {f_darcy:.5f}")
@@ -93,7 +128,7 @@ def verify_results():
         print(f"Simulated ΔP (Kinematic) : {p_inlet_sim:.4f} m²/s² ({p_inlet_sim * cfg.density:.2f} Pa)")
         print(f"Relative Error            : {error:.2f}%")
         print("-" * 60)
-        print(" 📐 WALL DISTANCE METRICS (y+)")
+        print("WALL DISTANCE METRICS (y+)")
         print(f"Wall y+ (Min / Max / Avg) : {yplus_data['min']:.2f} / {yplus_data['max']:.2f} / {yplus_data['avg']:.2f}")
         
         if yplus_data['avg'] < 1.0:
@@ -103,6 +138,14 @@ def verify_results():
         else:
             print("y+ Status                 : In buffer layer (1 < y+ < 30). Consider adjusting mesh.")
             
+        print("-" * 60)
+        
+        num_cores, num_cells, execution_time = get_performance_metrics()
+        print("COMPUTATIONAL PERFORMANCE METRICS")
+        print(f"Decomposition Cores       : {num_cores}")
+        print(f"Mesh Size (Cells)         : {num_cells}")
+        print(f"Execution Time            : {execution_time}")
+
         print("=" * 60)
 
         if error < 5.0:
