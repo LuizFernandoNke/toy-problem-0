@@ -30,13 +30,13 @@ application     simpleFoam;
 startFrom       startTime;
 startTime       0;
 stopAt          endTime;
-endTime         20;
+endTime         500;
 deltaT          1;
 writeControl    timeStep;
-writeInterval   1;
+writeInterval   25;
 purgeWrite      0;
 writeFormat     ascii;
-writePrecision  6;
+writePrecision  8;
 writeCompression off;
 timeFormat      general;
 timePrecision   6;
@@ -222,7 +222,6 @@ method              scotch;
     system_dir.mkdir(parents=True, exist_ok=True)
     with open(system_dir / "decomposeParDict", "w", encoding="utf-8") as f:
         f.write(content)
-
 
 def main():
     setup_control_dict(CASE_DIR)

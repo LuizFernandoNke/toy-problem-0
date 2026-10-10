@@ -106,8 +106,17 @@ def verify_results():
     case_dir = Path("template_case")
 
     re_num = cfg.reynolds_number
-    f_darcy = 0.25 / (math.log10(5.74 / (re_num ** 0.9))) ** 2
-    dp_theory_pa = f_darcy * (cfg.length / cfg.diameter) * (0.5 * cfg.density * (cfg.velocity_inlet ** 2))
+
+    #re_num = cfg.reynolds_number
+
+    # 1. Fator de atrito laminar (Hagen-Poiseuille)
+    f_darcy = 64.0 / re_num
+
+    # 2. Velocidade média real do escoamento (sem dividir por 2)
+    u_avg = cfg.velocity_inlet  
+
+    # 3. Queda de pressão teórica
+    dp_theory_pa = f_darcy * (cfg.length / cfg.diameter) * (0.5 * cfg.density * (u_avg ** 2))
     dp_kinematic_theory = dp_theory_pa / cfg.density
 
     print("=" * 60)
@@ -115,7 +124,7 @@ def verify_results():
     print("=" * 60)
     print(f"Reynolds Number (Re)      : {re_num:.2f}")
     print(f"Theoretical Darcy f      : {f_darcy:.5f}")
-    print(f"Theoretical ΔP (Kinematic): {dp_kinematic_theory:.4f} m²/s² ({dp_theory_pa:.2f} Pa)")
+    print(f"Theoretical ΔP (Kinematic): {dp_kinematic_theory:.6f} m²/s² ({dp_theory_pa:.2f} Pa)")
     print("-" * 60)
 
     try:

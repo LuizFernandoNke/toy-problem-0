@@ -40,7 +40,7 @@ FoamFile
 
     # 2. constant/momentumTransport
     mom_trans = get_header("momentumTransport", "dictionary", '"constant"') + """
-simulationType  RAS;
+simulationType  laminar;
 
 RAS
 {
