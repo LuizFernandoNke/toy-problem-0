@@ -38,7 +38,12 @@ nu              [0 2 -1 0 0 0 0] {cfg.kinematic_viscosity:.7e};
     with open(transport_path, "w", encoding="utf-8") as f:
         f.write(transport_props)
 
+    
     # Write 0/U (Velocity Boundary Conditions)
+    # Calcula raio e velocidade média do config
+    radius = cfg.diameter / 2.0
+    u_avg = cfg.velocity_inlet
+
     u_file = f"""/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
 | \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
@@ -58,14 +63,37 @@ FoamFile
 
 dimensions      [0 1 -1 0 0 0 0];
 
-internalField   uniform (0 0 {cfg.velocity_inlet});
+internalField   uniform (0 0 {u_avg});
 
 boundaryField
 {{
     inlet
     {{
-        type            fixedValue;
-        value           uniform (0 0 {cfg.velocity_inlet});
+        type            codedFixedValue;
+        value           uniform (0 0 {u_avg});
+        name            parabolicInlet;
+
+        code
+        #{{
+            const scalar R = {radius:.6f};
+            const scalar Uavg = {u_avg:.6f};
+            const scalar Umax = 2.0 * Uavg;
+
+            const vectorField& C = patch().Cf();
+            vectorField& U = *this;
+
+            forAll(C, i)
+            {{
+                // r^2 = x^2 + y^2
+                const scalar r2 = sqr(C[i].x()) + sqr(C[i].y());
+                scalar uz = Umax * (1.0 - r2 / sqr(R));
+
+                // Evita velocidades negativas nas bordas por arredondamento
+                if (uz < 0.0) uz = 0.0;
+
+                U[i] = vector(0, 0, uz);
+            }}
+        #}};
     }}
 
     outlet

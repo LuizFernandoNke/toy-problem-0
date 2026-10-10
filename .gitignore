@@ -12,3 +12,7 @@ template_case/postProcessing
 template_case/constant/polyMesh
 template_case/0/
 template_case/[1-9]*
+
+# ParaView e compilação dinâmica do OpenFOAM
+*.foam
+template_case/dynamicCode/
