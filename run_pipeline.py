@@ -85,6 +85,13 @@ def run_step(description: str, command: list[str], log_file_path: Path = None):
         sys.exit(1)
 
 
+def create_paraview_file():
+    """Cria um arquivo .foam no diretório do caso para facilidade de abertura no ParaView."""
+    foam_file = CASE_DIR / f"{CASE_DIR.name}.foam"
+    foam_file.touch(exist_ok=True)
+    print(f"\nParaView file created: {foam_file}")
+
+
 def main():
     print("=" * 60)
     print("STARTING PARALLEL CFD PIPELINE (OpenFOAM v2606)")
@@ -101,7 +108,7 @@ def main():
     # Steps do solver em paralelo
     run_step("Decomposing domain with Scotch", ["decomposePar", "-case", str(CASE_DIR)])
     
-    #run simpleFOAM and write log to file
+    # Run simpleFoam and write log to file
     log_file = CASE_DIR / "simpleFoam.log"
     run_step(
         f"Running simpleFoam in parallel on {NUM_PROCESSORS} cores", 
@@ -109,10 +116,14 @@ def main():
         log_file_path=log_file
     )
     
-    run_step("Reconstructing parallel domain fields", ["reconstructPar", "-latestTime", "-case", str(CASE_DIR)])
+    # Reconstrução completa de todos os tempos e campos da malha
+    run_step("Reconstructing parallel domain fields (Full Reconstruction)", ["reconstructPar", "-case", str(CASE_DIR)])
     
     # Step de pós-processamento
     run_step("Processing results and generating verification report", [sys.executable, "scripts/post_process.py"])
+
+    # Gera arquivo .foam para o ParaView
+    create_paraview_file()
 
     print("=" * 60)
     print("PIPELINE COMPLETED SUCCESSFULLY")

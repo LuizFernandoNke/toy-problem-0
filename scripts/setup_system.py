@@ -33,7 +33,7 @@ stopAt          endTime;
 endTime         1000;
 deltaT          1;
 writeControl    timeStep;
-writeInterval   100;
+writeInterval   10;
 purgeWrite      0;
 writeFormat     ascii;
 writePrecision  6;

@@ -9,7 +9,7 @@ class SimulationConfig(BaseModel):
     length: float = Field(default=2.0, gt=0, description="length in meters")
     
     #flow properties
-    velocity_inlet: float = Field(default=1.5, gt=0, description="inlet velocity in m/s")
+    velocity_inlet: float = Field(default=0.5, gt=0, description="inlet velocity in m/s")
     kinematic_viscosity: float = Field(default=1e-6, gt=0, description="kinematic viscosity (nu)")
     density: float = Field(default=998.2, gt=0, description="density of the fluid in kg/m3")
     
@@ -17,7 +17,7 @@ class SimulationConfig(BaseModel):
     turbulence_model: str = "kEpsilon"  #or kOmegaSST
 
     #mesh size
-    mesh_factor: float = 1
+    mesh_factor: float = 3
     
     @property
     def reynolds_number(self) -> float:
