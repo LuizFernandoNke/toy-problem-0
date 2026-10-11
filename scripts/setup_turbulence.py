@@ -134,7 +134,7 @@ boundaryField
     }
     walls
     {
-        type            nutkWallFunction;
+        type            calculated;
         value           uniform 0;
     }
 }

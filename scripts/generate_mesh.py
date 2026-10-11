@@ -26,7 +26,7 @@ def generate_blockmesh_dict(cfg: SimulationConfig, output_path: Path, wall_expan
     
     # Parâmetros de resolução da malha
     n_core = max(4, int(10 * cfg.mesh_factor))    # Células ao longo do núcleo
-    n_radial = max(4, int(10 * cfg.mesh_factor))  # Células radiais
+    n_radial = max(8, int(20 * cfg.mesh_factor))  # Células radiais
     nz = max(10, int(100 * cfg.mesh_factor))      # Células ao longo do comprimento (z)
 
     content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     
     # wall_expansion_ratio define a razão entre a célula no centro e a célula na parede.
     # Valores comuns: 3.0 a 6.0 (ex: 4.0 significa que a célula central é 4x maior que a da parede).
-    generate_blockmesh_dict(config, target_path, wall_expansion_ratio=4.0)
+    generate_blockmesh_dict(config, target_path, wall_expansion_ratio=15.0)
 
     # Executa automaticamente o comando blockMesh no OpenFOAM
     print("Executing blockMesh in OpenFOAM...")

@@ -109,20 +109,30 @@ def verify_results():
 
     #re_num = cfg.reynolds_number
 
-    # 1. Fator de atrito laminar (Hagen-Poiseuille)
-    f_darcy = 64.0 / re_num
+# 1. Fator de atrito de Darcy (Laminar vs. Turbulento - Blasius)
+    if re_num < 2300:
+        f_darcy = 64.0 / re_num
+        flow_regime = "Laminar (Hagen-Poiseuille)"
+    elif re_num <= 100000:
+        f_darcy = 0.3164 / (re_num ** 0.25)  # Equação de Blasius para tubos lisos
+        flow_regime = "Turbulent (Blasius)"
+    else:
+        # Para Re > 10^5 (Aproximação de Swamee-Jain para tubo liso)
+        f_darcy = 0.0055 * (1 + (20000 / re_num) ** (1/3))
+        flow_regime = "High-Re Turbulent"
 
-    # 2. Velocidade média real do escoamento (sem dividir por 2)
+    # 2. Velocidade média real do escoamento
     u_avg = cfg.velocity_inlet  
 
-    # 3. Queda de pressão teórica
-    dp_theory_pa = f_darcy * (cfg.length / cfg.diameter) * (0.5 * cfg.density * (u_avg ** 2))
+    # 3. Queda de pressão teórica (Darcy-Weisbach)
+    dp_theory_pa = f_darcy * (0.5 / cfg.diameter) * (0.5 * cfg.density * (u_avg ** 2))
     dp_kinematic_theory = dp_theory_pa / cfg.density
 
     print("=" * 60)
     print("SIMULATION VERIFICATION REPORT")
     print("=" * 60)
     print(f"Reynolds Number (Re)      : {re_num:.2f}")
+    print(f"Flow Regime               : {flow_regime}")
     print(f"Theoretical Darcy f      : {f_darcy:.5f}")
     print(f"Theoretical ΔP (Kinematic): {dp_kinematic_theory:.6f} m²/s² ({dp_theory_pa:.2f} Pa)")
     print("-" * 60)
