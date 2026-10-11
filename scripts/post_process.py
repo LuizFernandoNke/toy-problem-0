@@ -163,8 +163,21 @@ def verify_results():
             print(f"Difference exceeds 5% (Current Error: {error:.2f}%).")
         print("=" * 60)
 
+        # === FALTA ESTE RETURN DENTRO DO TRY ===
+        return {
+            "mesh_factor": cfg.mesh_factor,
+            "num_cells": num_cells,
+            "reynolds": re_num,
+            "theoretical_dp_pa": dp_theory_pa,
+            "simulated_dp_pa": p_inlet_sim * cfg.density,
+            "relative_error_pct": error,
+            "y_plus_avg": yplus_data["avg"],
+            "execution_time": execution_time
+        }
+
     except Exception as err:
         print(f"Post-processing error: {err}")
+        return None
 
 
 if __name__ == "__main__":

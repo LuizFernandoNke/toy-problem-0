@@ -30,7 +30,7 @@ application     simpleFoam;
 startFrom       startTime;
 startTime       0;
 stopAt          endTime;
-endTime         500;
+endTime         800;
 deltaT          1;
 writeControl    timeStep;
 writeInterval   25;
