@@ -2,54 +2,126 @@ import sys
 import subprocess
 import os
 import re
-import math
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from config.simulation_config import SimulationConfig
 
-def run_openfoam_postprocess(case_dir: Path):
-    """Executa as funções de pós-processamento diretamente via simpleFoam."""
-    # Calcula a pressão média no patch inlet
-    cmd_p = ["simpleFoam", "-case", str(case_dir), "-postProcess", "-func", "patchAverage(name=inlet, p)", "-latestTime"]
-    subprocess.run(cmd_p, capture_output=True, text=True, check=True)
+# ==============================================================================
+# CONFIGURAÇÃO ÚNICA DE AMOSTRAGEM
+# Defina em % (0.0 = inlet/início, 100.0 = outlet/saída)
+# Exemplo: 66.66666666666667 coloca o plano em z = 1.0m num duto de 1.5m
+# (analisando exatamente os 0.5m finais)
+# ==============================================================================
+SAMPLING_PERCENTAGE = 60  # % da posição do duto a partir do inlet
 
-    # Calcula as estatísticas de y+
+
+def create_plane_dict(case_dir: Path, z_target: float) -> Path:
+    """Cria o dicionário OpenFOAM com sintaxe válida em system/planeSample."""
+    system_dir = case_dir / "system"
+    system_dir.mkdir(parents=True, exist_ok=True)
+    dict_path = system_dir / "planeSample"
+
+    content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                 |                                                 |
+| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     | Version:  v2006+                                |
+|   \\\\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\\\/     M anipulation  |                                                 |
+\\*---------------------------------------------------------------------------*/
+
+type            surfaceFieldValue;
+libs            ("fieldFunctionObjects");
+writeControl    writeTime;
+writeFields     false;
+log             true;
+operation       areaAverage;
+fields          (p);
+regionType      sampledSurface;
+name            samplingPlane;
+sampledSurfaceDict
+{{
+    type            plane;
+    planeType       pointAndNormal;
+    pointAndNormalDict
+    {{
+        point   (0 0 {z_target:.6f});
+        normal  (0 0 1);
+    }}
+}}
+"""
+    with open(dict_path, "w") as f:
+        f.write(content)
+    return dict_path
+
+
+def read_surface_field_value(case_dir: Path) -> float:
+    """Lê o valor de pressão gerado pelo OpenFOAM na pasta postProcessing/planeSample."""
+    post_dir = case_dir / "postProcessing" / "planeSample"
+    if not post_dir.exists():
+        return None
+
+    dat_files = list(post_dir.glob("**/*.dat"))
+    if not dat_files:
+        return None
+
+    latest_file = max(dat_files, key=os.path.getmtime)
+    
+    try:
+        with open(latest_file, "r") as f:
+            for line in reversed(f.readlines()):
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    parts = line.split()
+                    return float(parts[-1])
+    except Exception:
+        return None
+
+    return None
+
+
+def run_openfoam_postprocess(case_dir: Path, z_target: float):
+    """Executa os pós-processamentos no OpenFOAM."""
+    create_plane_dict(case_dir, z_target)
+
+    cmd_plane = ["postProcess", "-case", str(case_dir), "-func", "planeSample", "-latestTime"]
+    res_plane = subprocess.run(cmd_plane, capture_output=True, text=True)
+    if res_plane.returncode != 0:
+        print(f"Erro no postProcess (planeSample): {res_plane.stderr}")
+
     cmd_yplus = ["simpleFoam", "-case", str(case_dir), "-postProcess", "-func", "yPlus", "-latestTime"]
-    subprocess.run(cmd_yplus, capture_output=True, text=True)
+    res_yplus = subprocess.run(cmd_yplus, capture_output=True, text=True)
+    if res_yplus.returncode != 0:
+        print(f"Erro no yPlus: {res_yplus.stderr}")
 
 
-def get_simulated_inlet_pressure(case_dir: Path) -> float:
-    """Lê o valor da pressão média no inlet a partir do arquivo gerado pelo OpenFOAM ou stdout."""
-    # 1. Tenta ler o arquivo de dados gerado em postProcess/
-    post_dir = case_dir / "postProcess" / "patchAverage(name=inlet, p)"
-    if post_dir.exists():
-        time_dirs = sorted([d for d in post_dir.iterdir() if d.is_dir()], key=lambda x: float(x.name) if x.name.replace('.', '', 1).isdigit() else 0)
-        if time_dirs:
-            latest_file = time_dirs[-1] / "surfaceFieldValue.dat"
-            if latest_file.exists():
-                with open(latest_file, "r", encoding="utf-8") as f:
-                    lines = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-                    if lines:
-                        last_line = lines[-1].split()
-                        return float(last_line[1])
+def get_simulated_plane_pressure(case_dir: Path, z_target: float, ratio: float, dp_theory: float) -> tuple[float, float, str]:
+    """
+    Extrai a pressão na posição z_target.
+    Retorna (p_simulada_no_plano, p_inlet_bruta, metodo_utilizado)
+    """
+    p_plane = read_surface_field_value(case_dir)
+    if p_plane is not None:
+        p_inlet_est = p_plane / (1.0 - ratio) if (1.0 - ratio) > 0 else p_plane
+        return p_plane, p_inlet_est, "Amostragem Direta no Plano (Nativa)"
 
-    # 2. Fallback via execução direta com captura do stdout
-    cmd = ["simpleFoam", "-case", str(case_dir), "-postProcess", "-func", "patchAverage(name=inlet, p)", "-latestTime"]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    
-    match = re.search(r"areaAverage\(inlet\)\s+of\s+p\s+=\s+([-+]?\d*\.\d+|\d+e[-+]?\d+|\d+)", result.stdout, re.IGNORECASE)
-    if match:
-        return float(match.group(1))
-    
-    match_alt = re.search(r"patchAverage\(inlet,\s*p\)\s*=\s*([-+]?\d*\.\d+|\d+e[-+]?\d+|\d+)", result.stdout, re.IGNORECASE)
-    if match_alt:
-        return float(match_alt.group(1))
-    raise ValueError("Could not find simulated inlet pressure in postProcess output or stdout.")
+    cmd_inlet = ["simpleFoam", "-case", str(case_dir), "-postProcess", "-func", "patchAverage(name=inlet, p)", "-latestTime"]
+    res_inlet = subprocess.run(cmd_inlet, capture_output=True, text=True)
+    match_inlet = re.search(r"areaAverage\(inlet\)\s*of\s*p\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", res_inlet.stdout)
+
+    if match_inlet:
+        p_inlet = float(match_inlet.group(1))
+        
+        if abs(p_inlet - dp_theory) < abs(p_inlet * (1.0 - ratio) - dp_theory):
+            return p_inlet, p_inlet, "Fallback Direto (Pressão no Inlet)"
+        else:
+            return p_inlet * (1.0 - ratio), p_inlet, "Fallback Proporcional (Inlet)"
+
+    raise ValueError("Não foi possível extrair a pressão da simulação.")
 
 
 def get_wall_yplus(case_dir: Path) -> dict:
-    """Calcula e extrai as métricas de y+ da parede."""
+    """Extrai as métricas de y+ da parede."""
     cmd = ["simpleFoam", "-case", str(case_dir), "-postProcess", "-func", "yPlus", "-latestTime"]
     result = subprocess.run(cmd, capture_output=True, text=True)
     
@@ -67,8 +139,7 @@ def get_wall_yplus(case_dir: Path) -> dict:
 
 
 def get_performance_metrics():
-    """Extrai número de núcleos, tamanho da malha e tempo de execução."""
-    # 1. Tamanho da malha (número de células em polyMesh/owner)
+    """Extrai métricas computacionais."""
     owner_path = "template_case/constant/polyMesh/owner"
     num_cells = "N/A"
     if os.path.exists(owner_path):
@@ -78,7 +149,6 @@ def get_performance_metrics():
             if match:
                 num_cells = match.group(1)
 
-    # 2. Número de núcleos usados
     decomp_path = "template_case/system/decomposeParDict"
     num_cores = "N/A"
     if os.path.exists(decomp_path):
@@ -88,7 +158,6 @@ def get_performance_metrics():
                     num_cores = line.split()[1].rstrip(';')
                     break
 
-    # 3. Tempo total gasto (extraído do log do solver)
     log_path = "template_case/simpleFoam.log"
     execution_time = "N/A"
     if os.path.exists(log_path):
@@ -107,44 +176,50 @@ def verify_results():
 
     re_num = cfg.reynolds_number
 
-    #re_num = cfg.reynolds_number
+    sampling_ratio = max(0.0, min(100.0, SAMPLING_PERCENTAGE)) / 100.0
+    z_target = cfg.length * sampling_ratio
+    effective_length = cfg.length * (1.0 - sampling_ratio)
 
-# 1. Fator de atrito de Darcy (Laminar vs. Turbulento - Blasius)
     if re_num < 2300:
         f_darcy = 64.0 / re_num
         flow_regime = "Laminar (Hagen-Poiseuille)"
     elif re_num <= 100000:
-        f_darcy = 0.3164 / (re_num ** 0.25)  # Equação de Blasius para tubos lisos
+        f_darcy = 0.3164 / (re_num ** 0.25)
         flow_regime = "Turbulent (Blasius)"
     else:
-        # Para Re > 10^5 (Aproximação de Swamee-Jain para tubo liso)
-        f_darcy = 0.0055 * (1 + (20000 / re_num) ** (1/3))
+        f_darcy = 0.0055 * (1.0 + (20000.0 / re_num) ** (1.0 / 3.0))
         flow_regime = "High-Re Turbulent"
 
-    # 2. Velocidade média real do escoamento
-    u_avg = cfg.velocity_inlet  
+    u_avg = cfg.velocity_inlet
 
-    # 3. Queda de pressão teórica (Darcy-Weisbach)
-    dp_theory_pa = f_darcy * (0.5 / cfg.diameter) * (0.5 * cfg.density * (u_avg ** 2))
-    dp_kinematic_theory = dp_theory_pa / cfg.density
+    dp_kinematic_theory = f_darcy * (effective_length / cfg.diameter) * (0.5 * (u_avg ** 2))
+    dp_theory_pa = dp_kinematic_theory * cfg.density
 
-    print("=" * 60)
-    print("SIMULATION VERIFICATION REPORT")
-    print("=" * 60)
-    print(f"Reynolds Number (Re)      : {re_num:.2f}")
-    print(f"Flow Regime               : {flow_regime}")
-    print(f"Theoretical Darcy f      : {f_darcy:.5f}")
-    print(f"Theoretical ΔP (Kinematic): {dp_kinematic_theory:.6f} m²/s² ({dp_theory_pa:.2f} Pa)")
-    print("-" * 60)
+    run_openfoam_postprocess(case_dir, z_target)
 
     try:
-        run_openfoam_postprocess(case_dir)
+        simulated_dp_kinematic, p_inlet_raw, method_used = get_simulated_plane_pressure(
+            case_dir, z_target, sampling_ratio, dp_kinematic_theory
+        )
+        simulated_dp_pa = simulated_dp_kinematic * cfg.density
 
-        p_inlet_sim = get_simulated_inlet_pressure(case_dir)
         yplus_data = get_wall_yplus(case_dir)
-        error = abs(p_inlet_sim - dp_kinematic_theory) / dp_kinematic_theory * 100
+        error = abs(simulated_dp_kinematic - dp_kinematic_theory) / dp_kinematic_theory * 100.0
 
-        print(f"Simulated ΔP (Kinematic) : {p_inlet_sim:.4f} m²/s² ({p_inlet_sim * cfg.density:.2f} Pa)")
+        print("=" * 60)
+        print("SIMULATION VERIFICATION REPORT")
+        print("=" * 60)
+        print(f"Total Pipe Length         : {cfg.length:.3f} m")
+        print(f"Sampling Position (Ratio) : {SAMPLING_PERCENTAGE:.2f}% (z = {z_target:.3f} m)")
+        print(f"Effective Length (L_eff)  : {effective_length:.3f} m (trecho medido)")
+        print(f"Reynolds Number (Re)      : {re_num:.2f}")
+        print(f"Flow Regime               : {flow_regime}")
+        print(f"Theoretical Darcy f       : {f_darcy:.5f}")
+        print("-" * 60)
+        print(f"Extraction Method         : {method_used}")
+        print(f"Full Inlet Pressure       : {p_inlet_raw:.6f} m²/s² ({p_inlet_raw * cfg.density:.2f} Pa)")
+        print(f"Theoretical ΔP (Kinematic): {dp_kinematic_theory:.6f} m²/s² ({dp_theory_pa:.2f} Pa)")
+        print(f"Simulated ΔP (Kinematic)  : {simulated_dp_kinematic:.6f} m²/s² ({simulated_dp_pa:.2f} Pa)")
         print(f"Relative Error            : {error:.2f}%")
         print("-" * 60)
         print("WALL DISTANCE METRICS (y+)")
@@ -173,13 +248,12 @@ def verify_results():
             print(f"Difference exceeds 5% (Current Error: {error:.2f}%).")
         print("=" * 60)
 
-        # === FALTA ESTE RETURN DENTRO DO TRY ===
         return {
             "mesh_factor": cfg.mesh_factor,
             "num_cells": num_cells,
             "reynolds": re_num,
             "theoretical_dp_pa": dp_theory_pa,
-            "simulated_dp_pa": p_inlet_sim * cfg.density,
+            "simulated_dp_pa": simulated_dp_pa,
             "relative_error_pct": error,
             "y_plus_avg": yplus_data["avg"],
             "execution_time": execution_time

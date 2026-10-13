@@ -17,7 +17,7 @@ class SimulationConfig(BaseModel):
     turbulence_model: str = "kEpsilon"  #or kOmegaSST
 
     #mesh size
-    mesh_factor: float = 2
+    mesh_factor: float = 1
 
     
     @property

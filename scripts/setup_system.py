@@ -6,15 +6,55 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 CASE_DIR = ROOT_DIR / "template_case"
 
-
-def setup_control_dict(case_dir: Path):
-    """Gera o arquivo system/controlDict."""
+def setup_sample_dict(case_dir: Path):
+    """Gera o arquivo system/sampleDict para extrair o plano interno."""
     content = """/*--------------------------------*- C++ -*----------------------------------*\\
 | =========                 |                                                 |
-| \\\\      / F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\\\    /  O peration     | Version:  2606                                  |
-|   \\\\  /   A nd            | Website:  www.openfoam.com                      |
-|    \\\\/    M anipulation   |                                                 |
+| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     | Version:  2606                                  |
+|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      sampleDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+type            sampledSurfaces;
+surfaceFormat   raw;
+fields          (p);
+
+surfaces
+(
+    plano_meio
+    {
+        type        plane;
+        planeType   pointAndNormal;
+        point       (1.0 0 0);
+        normal      (1 0 0);
+    }
+);
+
+// ************************************************************************* //
+"""
+    system_dir = case_dir / "system"
+    system_dir.mkdir(parents=True, exist_ok=True)
+    
+    sample_file = system_dir / "sampleDict"
+    with open(sample_file, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def setup_control_dict(case_dir: Path):
+    """Gera o arquivo system/controlDict sem functionObjects para evitar erros no solver paralelo."""
+    content = """/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                 |                                                 |
+| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     | Version:  2606                                  |
+|   \\\\  /    A nd           | Website:  www.openfoam.com                      |
 \\*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -27,21 +67,24 @@ FoamFile
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 application     simpleFoam;
-startFrom       startTime;
+startFrom       latestTime;
 startTime       0;
 stopAt          endTime;
-endTime         500;
+endTime         1000;
 deltaT          1;
 writeControl    timeStep;
-writeInterval   25;
+writeInterval   100;
 purgeWrite      0;
 writeFormat     ascii;
-writePrecision  8;
+writePrecision  6;
 writeCompression off;
 timeFormat      general;
 timePrecision   6;
 runTimeModifiable true;
 
+functions
+{
+}
 // ************************************************************************* //
 """
     system_dir = case_dir / "system"
@@ -228,7 +271,8 @@ def main():
     setup_fv_schemes(CASE_DIR)
     setup_fv_solution(CASE_DIR)
     setup_decompose_par(CASE_DIR, num_processors=10)
-    print("System files (controlDict, fvSchemes, fvSolution, decomposeParDict) generated successfully.")
+    setup_sample_dict(CASE_DIR)
+    print("System files (controlDict, fvSchemes, fvSolution, decomposeParDict, sampleDict) generated successfully.")
 
 
 if __name__ == "__main__":

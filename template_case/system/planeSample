@@ -1,0 +1,27 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2006+                                |
+|   \\  /    A nd           | Web:      www.OpenFOAM.org                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+
+type            surfaceFieldValue;
+libs            ("fieldFunctionObjects");
+writeControl    writeTime;
+writeFields     false;
+log             true;
+operation       areaAverage;
+fields          (p);
+regionType      sampledSurface;
+name            samplingPlane;
+sampledSurfaceDict
+{
+    type            plane;
+    planeType       pointAndNormal;
+    pointAndNormalDict
+    {
+        point   (0 0 0.900000);
+        normal  (0 0 1);
+    }
+}
