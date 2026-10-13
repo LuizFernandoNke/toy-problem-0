@@ -15,4 +15,4 @@ template_case/[1-9]*
 
 # ParaView e compilação dinâmica do OpenFOAM
 *.foam
-template_case/dynamicCode/
+template_case/dynamicCode/*.png

@@ -2,6 +2,8 @@ import sys
 import subprocess
 import os
 import re
+import csv
+import traceback
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -9,11 +11,22 @@ from config.simulation_config import SimulationConfig
 
 # ==============================================================================
 # CONFIGURAÇÃO ÚNICA DE AMOSTRAGEM
-# Defina em % (0.0 = inlet/início, 100.0 = outlet/saída)
-# Exemplo: 66.66666666666667 coloca o plano em z = 1.0m num duto de 1.5m
-# (analisando exatamente os 0.5m finais)
 # ==============================================================================
 SAMPLING_PERCENTAGE = 50  # % da posição do duto a partir do inlet
+CSV_OUTPUT_PATH = Path("simulation_results.csv")
+
+
+def run_foam_cmd(cmd_str: str) -> subprocess.CompletedProcess:
+    """Executa um comando do OpenFOAM garantindo o carregamento do ambiente bashrc."""
+    full_cmd = f"source /usr/lib/openfoam/openfoam2606/etc/bashrc && {cmd_str}"
+    return subprocess.run(
+        full_cmd,
+        shell=True,
+        executable="/bin/bash",
+        capture_output=True,
+        text=True,
+        env=os.environ.copy()
+    )
 
 
 def create_plane_dict(case_dir: Path, z_target: float) -> Path:
@@ -50,7 +63,7 @@ sampledSurfaceDict
     }}
 }}
 """
-    with open(dict_path, "w") as f:
+    with open(dict_path, "w", encoding="utf-8") as f:
         f.write(content)
     return dict_path
 
@@ -68,7 +81,7 @@ def read_surface_field_value(case_dir: Path) -> float:
     latest_file = max(dat_files, key=os.path.getmtime)
     
     try:
-        with open(latest_file, "r") as f:
+        with open(latest_file, "r", encoding="utf-8") as f:
             for line in reversed(f.readlines()):
                 line = line.strip()
                 if line and not line.startswith("#"):
@@ -84,29 +97,26 @@ def run_openfoam_postprocess(case_dir: Path, z_target: float):
     """Executa os pós-processamentos no OpenFOAM."""
     create_plane_dict(case_dir, z_target)
 
-    cmd_plane = ["postProcess", "-case", str(case_dir), "-func", "planeSample", "-latestTime"]
-    res_plane = subprocess.run(cmd_plane, capture_output=True, text=True)
+    cmd_plane = f"postProcess -case {case_dir} -func planeSample -latestTime"
+    res_plane = run_foam_cmd(cmd_plane)
     if res_plane.returncode != 0:
-        print(f"Erro no postProcess (planeSample): {res_plane.stderr}")
+        print(f"Aviso no postProcess (planeSample): {res_plane.stderr.strip()}")
 
-    cmd_yplus = ["simpleFoam", "-case", str(case_dir), "-postProcess", "-func", "yPlus", "-latestTime"]
-    res_yplus = subprocess.run(cmd_yplus, capture_output=True, text=True)
+    cmd_yplus = f"simpleFoam -case {case_dir} -postProcess -func yPlus -latestTime"
+    res_yplus = run_foam_cmd(cmd_yplus)
     if res_yplus.returncode != 0:
-        print(f"Erro no yPlus: {res_yplus.stderr}")
+        print(f"Aviso no yPlus: {res_yplus.stderr.strip()}")
 
 
 def get_simulated_plane_pressure(case_dir: Path, z_target: float, ratio: float, dp_theory: float) -> tuple[float, float, str]:
-    """
-    Extrai a pressão na posição z_target.
-    Retorna (p_simulada_no_plano, p_inlet_bruta, metodo_utilizado)
-    """
+    """Extrai a pressão na posição z_target."""
     p_plane = read_surface_field_value(case_dir)
     if p_plane is not None:
         p_inlet_est = p_plane / (1.0 - ratio) if (1.0 - ratio) > 0 else p_plane
-        return p_plane, p_inlet_est, "Amostragem Direta no Plano (Nativa)"
+        return p_plane, p_inlet_est
 
-    cmd_inlet = ["simpleFoam", "-case", str(case_dir), "-postProcess", "-func", "patchAverage(name=inlet, p)", "-latestTime"]
-    res_inlet = subprocess.run(cmd_inlet, capture_output=True, text=True)
+    cmd_inlet = f"simpleFoam -case {case_dir} -postProcess -func \"patchAverage(name=inlet, p)\" -latestTime"
+    res_inlet = run_foam_cmd(cmd_inlet)
     match_inlet = re.search(r"areaAverage\(inlet\)\s*of\s*p\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", res_inlet.stdout)
 
     if match_inlet:
@@ -122,8 +132,8 @@ def get_simulated_plane_pressure(case_dir: Path, z_target: float, ratio: float, 
 
 def get_wall_yplus(case_dir: Path) -> dict:
     """Extrai as métricas de y+ da parede."""
-    cmd = ["simpleFoam", "-case", str(case_dir), "-postProcess", "-func", "yPlus", "-latestTime"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    cmd = f"simpleFoam -case {case_dir} -postProcess -func yPlus -latestTime"
+    result = run_foam_cmd(cmd)
     
     stdout = result.stdout
     pattern = r"walls[\s\S]*?min\s*=\s*([0-9.eE+-]+)[\s\S]*?max\s*=\s*([0-9.eE+-]+)[\s\S]*?average\s*=\s*([0-9.eE+-]+)"
@@ -143,7 +153,7 @@ def get_performance_metrics():
     owner_path = "template_case/constant/polyMesh/owner"
     num_cells = "N/A"
     if os.path.exists(owner_path):
-        with open(owner_path, 'r') as f:
+        with open(owner_path, 'r', encoding="utf-8") as f:
             content = f.read()
             match = re.search(r'nCells:\s*(\d+)', content)
             if match:
@@ -152,7 +162,7 @@ def get_performance_metrics():
     decomp_path = "template_case/system/decomposeParDict"
     num_cores = "N/A"
     if os.path.exists(decomp_path):
-        with open(decomp_path, 'r') as f:
+        with open(decomp_path, 'r', encoding="utf-8") as f:
             for line in f:
                 if "numberOfSubdomains" in line:
                     num_cores = line.split()[1].rstrip(';')
@@ -161,13 +171,24 @@ def get_performance_metrics():
     log_path = "template_case/simpleFoam.log"
     execution_time = "N/A"
     if os.path.exists(log_path):
-        with open(log_path, 'r') as f:
+        with open(log_path, 'r', encoding="utf-8") as f:
             for line in reversed(f.readlines()):
                 if "ClockTime" in line or "ExecutionTime" in line:
                     execution_time = line.strip()
                     break
 
     return num_cores, num_cells, execution_time
+
+
+def save_to_csv(data: dict, output_file: Path):
+    """Escreve os dados extraídos em um arquivo CSV."""
+    file_exists = output_file.exists()
+    
+    with open(output_file, mode="a", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=data.keys())
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(data)
 
 
 def verify_results():
@@ -205,62 +226,44 @@ def verify_results():
 
         yplus_data = get_wall_yplus(case_dir)
         error = abs(simulated_dp_kinematic - dp_kinematic_theory) / dp_kinematic_theory * 100.0
-
-        print("=" * 60)
-        print("SIMULATION VERIFICATION REPORT")
-        print("=" * 60)
-        print(f"Total Pipe Length         : {cfg.length:.3f} m")
-        print(f"Sampling Position (Ratio) : {SAMPLING_PERCENTAGE:.2f}% (z = {z_target:.3f} m)")
-        print(f"Effective Length (L_eff)  : {effective_length:.3f} m (trecho medido)")
-        print(f"Reynolds Number (Re)      : {re_num:.2f}")
-        print(f"Flow Regime               : {flow_regime}")
-        print(f"Theoretical Darcy f       : {f_darcy:.5f}")
-        print("-" * 60)
-        print(f"Extraction Method         : {method_used}")
-        print(f"Full Inlet Pressure       : {p_inlet_raw:.6f} m²/s² ({p_inlet_raw * cfg.density:.2f} Pa)")
-        print(f"Theoretical ΔP (Kinematic): {dp_kinematic_theory:.6f} m²/s² ({dp_theory_pa:.2f} Pa)")
-        print(f"Simulated ΔP (Kinematic)  : {simulated_dp_kinematic:.6f} m²/s² ({simulated_dp_pa:.2f} Pa)")
-        print(f"Relative Error            : {error:.2f}%")
-        print("-" * 60)
-        print("WALL DISTANCE METRICS (y+)")
-        print(f"Wall y+ (Min / Max / Avg) : {yplus_data['min']:.2f} / {yplus_data['max']:.2f} / {yplus_data['avg']:.2f}")
-        
-        if yplus_data['avg'] < 1.0:
-            print("y+ Status                 : Optimal for low-Re viscous sublayer resolution (y+ < 1)")
-        elif 30.0 <= yplus_data['avg'] <= 300.0:
-            print("y+ Status                 : Optimal for standard wall functions (30 < y+ < 300)")
-        else:
-            print("y+ Status                 : In buffer layer (1 < y+ < 30). Consider adjusting mesh.")
-            
-        print("-" * 60)
-        
         num_cores, num_cells, execution_time = get_performance_metrics()
-        print("COMPUTATIONAL PERFORMANCE METRICS")
-        print(f"Decomposition Cores       : {num_cores}")
-        print(f"Mesh Size (Cells)         : {num_cells}")
-        print(f"Execution Time            : {execution_time}")
 
-        print("=" * 60)
-
-        if error < 5.0:
-            print("VERIFICATION SUCCESS: CFD results match theory within 5% error!")
+        if yplus_data['avg'] < 1.0:
+            yplus_status = "Optimal (y+ < 1)"
+        elif 30.0 <= yplus_data['avg'] <= 300.0:
+            yplus_status = "Optimal wall functions (30 < y+ < 300)"
         else:
-            print(f"Difference exceeds 5% (Current Error: {error:.2f}%).")
-        print("=" * 60)
+            yplus_status = "Buffer layer (1 < y+ < 30)"
 
-        return {
+        results_data = {
             "mesh_factor": cfg.mesh_factor,
-            "num_cells": num_cells,
-            "reynolds": re_num,
+            "reynolds_number": re_num,
+            "flow_regime": flow_regime,
+            "pipe_length_m": cfg.length,
+            "effective_length_m": effective_length,
+            "z_target_m": z_target,
+            "theoretical_darcy_f": f_darcy,
             "theoretical_dp_pa": dp_theory_pa,
             "simulated_dp_pa": simulated_dp_pa,
             "relative_error_pct": error,
-            "y_plus_avg": yplus_data["avg"],
-            "execution_time": execution_time
+            "yplus_min": yplus_data["min"],
+            "yplus_max": yplus_data["max"],
+            "yplus_avg": yplus_data["avg"],
+            "yplus_status": yplus_status,
+            "extraction_method": method_used,
+            "num_cores": num_cores,
+            "num_cells": num_cells,
+            "execution_time": execution_time,
+            "verification": "SUCCESS" if error < 5.0 else "EXCEEDED_5_PERCENT"
         }
 
+        save_to_csv(results_data, CSV_OUTPUT_PATH)
+        print(f"Resultados salvos com sucesso em: {CSV_OUTPUT_PATH.resolve()}")
+        return results_data
+
     except Exception as err:
-        print(f"Post-processing error: {err}")
+        print(f"Erro ao extrair resultados do pós-processamento: {err}")
+        traceback.print_exc()
         return None
 
 
