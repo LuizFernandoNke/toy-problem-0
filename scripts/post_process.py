@@ -13,7 +13,7 @@ from config.simulation_config import SimulationConfig
 # Exemplo: 66.66666666666667 coloca o plano em z = 1.0m num duto de 1.5m
 # (analisando exatamente os 0.5m finais)
 # ==============================================================================
-SAMPLING_PERCENTAGE = 60  # % da posição do duto a partir do inlet
+SAMPLING_PERCENTAGE = 50  # % da posição do duto a partir do inlet
 
 
 def create_plane_dict(case_dir: Path, z_target: float) -> Path:

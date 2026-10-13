@@ -25,8 +25,8 @@ def generate_blockmesh_dict(cfg: SimulationConfig, output_path: Path, wall_expan
     c1 = R * math.cos(math.radians(45))   # Borda externa do tubo
     
     # Parâmetros de resolução da malha
-    n_core = max(4, int(10 * cfg.mesh_factor))    # Células ao longo do núcleo
-    n_radial = max(8, int(20 * cfg.mesh_factor))  # Células radiais
+    n_core = max(8, int(10 * cfg.mesh_factor))    # Células ao longo do núcleo
+    n_radial = max(16, int(20 * cfg.mesh_factor))  # Células radiais
     nz = max(10, int(100 * cfg.mesh_factor))      # Células ao longo do comprimento (z)
 
     content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
