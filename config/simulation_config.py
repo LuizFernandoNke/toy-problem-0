@@ -6,7 +6,7 @@ class SimulationConfig(BaseModel):
     
     #geometry properties
     diameter: float = Field(default=0.05, gt=0, description="diameter in meters")
-    length: float = Field(default=1.5, gt=0, description="length in meters")
+    length: float = Field(default=2, gt=0, description="length in meters")
     
     #flow properties
     velocity_inlet: float = Field(default=0.2, gt=0, description="inlet velocity in m/s")
@@ -14,7 +14,7 @@ class SimulationConfig(BaseModel):
     density: float = Field(default=998.2, gt=0, description="density of the fluid in kg/m3")
     
     # turbulence model (optional, default is kEpsilon)
-    turbulence_model: str = "kEpsilon"  #or kOmegaSST
+    turbulence_model: str = "kOmegaSST"
 
     #mesh size
     mesh_factor: float = 0.9

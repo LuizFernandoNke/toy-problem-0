@@ -1,18 +1,33 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-
-#Ignore virtual environment
+# ==========================================
+# 1. AMBIENTE VIRTUAL E CACHE PYTHON
+# ==========================================
 .venv/
-
-#Ignore temporary files from Phyton and OpenFOAM
+venv/
 __pycache__/
 *.pyc
-*.log
-template_case/processor*
-template_case/postProcessing
-template_case/constant/polyMesh
+
+# ==========================================
+# 2. RESULTADOS E PROCESSAMENTO DO OPENFOAM
+# ==========================================
+# Passos de tempo e malha gerada
 template_case/0/
 template_case/[1-9]*
+template_case/processor*
+template_case/constant/polyMesh
 
-# ParaView e compilação dinâmica do OpenFOAM
+# Pós-processamento, compilações e logs
+template_case/postProcessing/
+template_case/dynamicCode/
+*.log
 *.foam
-template_case/dynamicCode/*.png
+
+# Dicionários de amostragem gerados via script
+template_case/system/lineSample
+template_case/system/planesSample
+
+# ==========================================
+# 3. RELATÓRIOS, PERFIS E GRÁFICOS GERADOS
+# ==========================================
+*.csv
+*.png
+profiles/

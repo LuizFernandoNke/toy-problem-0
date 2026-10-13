@@ -3,6 +3,8 @@ import subprocess
 import sys
 import shutil
 from pathlib import Path
+from xml.parsers.expat import model
+from config.simulation_config import SimulationConfig
 
 # Diretórios base
 ROOT_DIR = Path(__file__).resolve().parent
@@ -93,6 +95,10 @@ def create_paraview_file():
 
 
 def main():
+
+    cfg = SimulationConfig()
+    model_name = cfg.turbulence_model
+
     print("=" * 60)
     print("STARTING PARALLEL CFD PIPELINE (OpenFOAM v2606)")
     print("=" * 60)
@@ -106,12 +112,12 @@ def main():
     run_step("Configuring turbulence model parameters", [sys.executable, "scripts/setup_turbulence.py"])
     
     # Steps do solver em paralelo
-    run_step("Decomposing domain with Scotch", ["decomposePar", "-case", str(CASE_DIR)])
+    run_step("Decomposing domain with Scotch", ["decomposePar","-force", "-case", str(CASE_DIR)])
     
     # Run simpleFoam and write log to file
     log_file = CASE_DIR / "simpleFoam.log"
     run_step(
-        f"Running simpleFoam in parallel on {NUM_PROCESSORS} cores", 
+        f"Running simpleFoam ({model}) in parallel on {NUM_PROCESSORS} cores", 
         ["mpirun", "-np", str(NUM_PROCESSORS), "simpleFoam", "-parallel", "-case", str(CASE_DIR)],
         log_file_path=log_file
     )

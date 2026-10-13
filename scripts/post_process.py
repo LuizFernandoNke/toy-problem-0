@@ -219,9 +219,10 @@ def verify_results():
     run_openfoam_postprocess(case_dir, z_target)
 
     try:
-        simulated_dp_kinematic, p_inlet_raw, method_used = get_simulated_plane_pressure(
+        simulated_dp_kinematic, p_inlet_raw = get_simulated_plane_pressure(
             case_dir, z_target, sampling_ratio, dp_kinematic_theory
         )
+        method_used = "plane_sampling"
         simulated_dp_pa = simulated_dp_kinematic * cfg.density
 
         yplus_data = get_wall_yplus(case_dir)
