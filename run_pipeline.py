@@ -3,7 +3,6 @@ import subprocess
 import sys
 import shutil
 from pathlib import Path
-from xml.parsers.expat import model
 from config.simulation_config import SimulationConfig
 
 # Diretórios base
@@ -98,9 +97,14 @@ def main():
 
     cfg = SimulationConfig()
     model_name = cfg.turbulence_model
+    inclination = cfg.inclination_deg
 
     print("=" * 60)
     print("STARTING PARALLEL CFD PIPELINE (OpenFOAM v2606)")
+    print(f"Case Name         : {cfg.case_name}")
+    print(f"Turbulence Model  : {model_name}")
+    print(f"Pipe Inclination  : {inclination}°")
+    print(f"Reynolds Number   : {cfg.reynolds_number:.2f}")
     print("=" * 60)
 
     clean_previous_runs()
@@ -112,12 +116,12 @@ def main():
     run_step("Configuring turbulence model parameters", [sys.executable, "scripts/setup_turbulence.py"])
     
     # Steps do solver em paralelo
-    run_step("Decomposing domain with Scotch", ["decomposePar","-force", "-case", str(CASE_DIR)])
+    run_step("Decomposing domain with Scotch", ["decomposePar", "-force", "-case", str(CASE_DIR)])
     
     # Run simpleFoam and write log to file
     log_file = CASE_DIR / "simpleFoam.log"
     run_step(
-        f"Running simpleFoam ({model}) in parallel on {NUM_PROCESSORS} cores", 
+        f"Running simpleFoam ({model_name}) at {inclination}° in parallel on {NUM_PROCESSORS} cores", 
         ["mpirun", "-np", str(NUM_PROCESSORS), "simpleFoam", "-parallel", "-case", str(CASE_DIR)],
         log_file_path=log_file
     )
@@ -128,11 +132,17 @@ def main():
     # Step de pós-processamento
     run_step("Processing results and generating verification report", [sys.executable, "scripts/post_process.py"])
 
+    # Chama diretamente a função do gráfico individual
+    from scripts.gerar_grafico import gerar_grafico_pressao
+    gerar_grafico_pressao()  # <--- Gera SOMENTE perfil_pressao.png
+
     # Gera arquivo .foam para o ParaView
     create_paraview_file()
 
     print("=" * 60)
     print("PIPELINE COMPLETED SUCCESSFULLY")
+    print(f"Configured Model : {model_name}")
+    print(f"Pipe Inclination : {inclination}°")
     print("=" * 60)
 
 

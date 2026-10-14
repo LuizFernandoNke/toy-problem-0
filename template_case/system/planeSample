@@ -21,7 +21,7 @@ sampledSurfaceDict
     planeType       pointAndNormal;
     pointAndNormalDict
     {
-        point   (0 0 1.875000);
+        point   (0 0 1.000000);
         normal  (0 0 1);
     }
 }

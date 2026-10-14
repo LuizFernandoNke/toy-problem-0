@@ -3,6 +3,7 @@ import subprocess
 import os
 import re
 import csv
+import math
 import traceback
 from pathlib import Path
 
@@ -92,6 +93,33 @@ def read_surface_field_value(case_dir: Path) -> float:
 
     return None
 
+def extract_and_save_profile(case_dir: Path, cfg: SimulationConfig, num_planes: int = 50):
+    """Extrai a pressão ao longo de vários pontos do duto para o gráfico individual."""
+    model_name = cfg.turbulence_model
+    z_positions = [cfg.length * (i / (num_planes + 1)) for i in range(1, num_planes + 1)]
+    profile_data = []
+
+    for z in z_positions:
+        post_plane_dir = case_dir / "postProcessing" / "planeSample"
+        if post_plane_dir.exists():
+            shutil.rmtree(post_plane_dir, ignore_errors=True)
+
+        create_plane_dict(case_dir, z)
+        cmd_plane = f"postProcess -case {case_dir} -func planeSample -latestTime"
+        run_foam_cmd(cmd_plane)
+
+        p_val = read_surface_field_value(case_dir)
+        if p_val is not None:
+            profile_data.append((z, p_val))
+
+    profiles_dir = Path("profiles")
+    profiles_dir.mkdir(exist_ok=True)
+    dest_file = profiles_dir / f"perfil_{model_name}.dat"
+
+    with open(dest_file, "w", encoding="utf-8") as f:
+        f.write("# z_m p_kinematic\n")
+        for z, p in profile_data:
+            f.write(f"{z:.6f} {p:.8e}\n")
 
 def run_openfoam_postprocess(case_dir: Path, z_target: float):
     """Executa os pós-processamentos no OpenFOAM."""
@@ -213,8 +241,23 @@ def verify_results():
 
     u_avg = cfg.velocity_inlet
 
-    dp_kinematic_theory = f_darcy * (effective_length / cfg.diameter) * (0.5 * (u_avg ** 2))
-    dp_theory_pa = dp_kinematic_theory * cfg.density
+    # --- INCLINAÇÃO E COMPONENTE HIDROSTÁTICA ---
+    inclination_deg = getattr(cfg, "inclination_deg", 0.0)
+    theta_rad = math.radians(inclination_deg)
+    g_acc = 9.81
+
+    # Queda de pressão por atrito (Darcy-Weisbach) em Pa
+    dp_friction_pa = f_darcy * (effective_length / cfg.diameter) * (0.5 * cfg.density * (u_avg ** 2))
+    
+    # Componente hidrostática em Pa
+    dp_hydrostatic_pa = cfg.density * g_acc * effective_length * math.sin(theta_rad)
+
+    # Queda de pressão total teórica em Pa
+    dp_theory_pa = dp_friction_pa + dp_hydrostatic_pa
+
+    # Pressão cinemática teórica apenas por atrito
+    dp_kinematic_friction = dp_friction_pa / cfg.density
+    dp_kinematic_theory = dp_kinematic_friction  # <--- DEFINIDA CORRETAMENTE
 
     run_openfoam_postprocess(case_dir, z_target)
 
@@ -223,10 +266,17 @@ def verify_results():
             case_dir, z_target, sampling_ratio, dp_kinematic_theory
         )
         method_used = "plane_sampling"
-        simulated_dp_pa = simulated_dp_kinematic * cfg.density
+
+        # 1. Pressão por atrito extraída do OpenFOAM (Pa)
+        simulated_dp_friction_pa = simulated_dp_kinematic * cfg.density
+
+        # 2. Pressão Total Simulada = Atrito do OpenFOAM + Hidrostática
+        simulated_dp_pa = simulated_dp_friction_pa + dp_hydrostatic_pa
+
+        # 3. Cálculo do Erro Relativo (Pressão Total Simulada vs Teórica)
+        error = abs(simulated_dp_pa - dp_theory_pa) / dp_theory_pa * 100.0
 
         yplus_data = get_wall_yplus(case_dir)
-        error = abs(simulated_dp_kinematic - dp_kinematic_theory) / dp_kinematic_theory * 100.0
         num_cores, num_cells, execution_time = get_performance_metrics()
 
         if yplus_data['avg'] < 1.0:
@@ -238,6 +288,7 @@ def verify_results():
 
         results_data = {
             "mesh_factor": cfg.mesh_factor,
+            "inclination_deg": inclination_deg,
             "reynolds_number": re_num,
             "flow_regime": flow_regime,
             "pipe_length_m": cfg.length,
