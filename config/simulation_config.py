@@ -34,7 +34,7 @@ class SimulationConfig(BaseModel):
     turbulence_model: str = "kOmegaSST"
 
     # mesh size
-    mesh_factor: float = 0.9
+    mesh_factor: float = 1.00
 
     @property
     def reynolds_number(self) -> float:

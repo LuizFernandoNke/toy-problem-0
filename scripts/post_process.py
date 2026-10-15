@@ -209,7 +209,12 @@ def get_performance_metrics():
 
 
 def save_to_csv(data: dict, output_file: Path):
-    """Escreve os dados extraídos em um arquivo CSV."""
+    """Escreve os dados extraídos em um arquivo CSV se não for um teste de independência."""
+    # Se a flag de bloqueio estiver ativa, ignora a gravação no simulation_results.csv
+    if os.environ.get("SKIP_SIMULATION_RESULTS_CSV") == "1":
+        print("[INFO] Gravação em simulation_results.csv ignorada (Estudo de Independência).")
+        return
+
     file_exists = output_file.exists()
     
     with open(output_file, mode="a", newline="", encoding="utf-8") as csvfile:

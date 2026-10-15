@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 import shutil
@@ -105,6 +106,7 @@ def main():
     print(f"Turbulence Model  : {model_name}")
     print(f"Pipe Inclination  : {inclination}°")
     print(f"Reynolds Number   : {cfg.reynolds_number:.2f}")
+    print(f"Mesh Factor       : {cfg.mesh_factor}")
     print("=" * 60)
 
     clean_previous_runs()
@@ -115,13 +117,25 @@ def main():
     run_step("Setting up numerical schemes and solvers", [sys.executable, "scripts/setup_system.py"])
     run_step("Configuring turbulence model parameters", [sys.executable, "scripts/setup_turbulence.py"])
     
+    # Extrai a quantidade exata de células geradas na malha
+    num_cells = "N/A"
+    owner_file = CASE_DIR / "constant" / "polyMesh" / "owner"
+    if owner_file.exists():
+        try:
+            content = owner_file.read_text(encoding="utf-8", errors="ignore")
+            match = re.search(r'nCells:\s*(\d+)', content)
+            if match:
+                num_cells = match.group(1)
+        except Exception:
+            pass
+
     # Steps do solver em paralelo
     run_step("Decomposing domain with Scotch", ["decomposePar", "-force", "-case", str(CASE_DIR)])
     
     # Run simpleFoam and write log to file
     log_file = CASE_DIR / "simpleFoam.log"
     run_step(
-        f"Running simpleFoam ({model_name}) at {inclination}° in parallel on {NUM_PROCESSORS} cores", 
+        f"Running simpleFoam ({model_name}) at {inclination}° in parallel on {NUM_PROCESSORS} cores, with mesh factor {cfg.mesh_factor} ({num_cells} cells)", 
         ["mpirun", "-np", str(NUM_PROCESSORS), "simpleFoam", "-parallel", "-case", str(CASE_DIR)],
         log_file_path=log_file
     )
@@ -143,6 +157,7 @@ def main():
     print("PIPELINE COMPLETED SUCCESSFULLY")
     print(f"Configured Model : {model_name}")
     print(f"Pipe Inclination : {inclination}°")
+    print(f"Total Cells      : {num_cells}")
     print("=" * 60)
 
 
