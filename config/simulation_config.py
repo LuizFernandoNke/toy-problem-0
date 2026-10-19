@@ -5,21 +5,11 @@ class SimulationConfig(BaseModel):
     case_name: str = "PipeFlow_Case0"
 
     # geometry properties
-    diameter: float = Field(default=0.05, gt=0, description="diameter in meters")
+    diameter: float = Field(default=0.2, gt=0, description="diameter in meters")
     length: float = Field(default=2.0, gt=0, description="length in meters")
-    
-    # ==============================================================================
-    # INCLINAÇÃO DO DUTO (ÂNGULO EM GRAUS)
-    # -  0.0 graus : O escoamento é totalmente horizontal.
-    # - 30.0, 45.0, 60.0 graus : A frente do tubo (saída/outlet) ergue-se nestes 
-    #                            graus em relação à entrada (inlet).
-    # - 90.0 graus : O escoamento passa a ser totalmente vertical (subida).
-    # - Valores negativos (ex: -30.0) : Escoamento em declive (descida).
-    # 
-    # Altere apenas o valor de 'default' abaixo para mudar a inclinação:
-    # ==============================================================================
+    roughness_height: float = Field(default=0.000045, gt=0, description="absolute roughness height in meters")
     inclination_deg: float = Field(
-        default=0, # Altere apenas aqui
+        default=10, # 0° a 360° ou valores negativos para inclinação descendente
         ge=-90.0, 
         le=90.0, 
         description="pipe inclination angle in degrees (-90 to 90)"
@@ -34,7 +24,7 @@ class SimulationConfig(BaseModel):
     turbulence_model: str = "kOmegaSST"
 
     # mesh size
-    mesh_factor: float = 1.00
+    mesh_factor: float = 1.0
 
     @property
     def reynolds_number(self) -> float:

@@ -4,6 +4,7 @@ import os
 import re
 import csv
 import math
+import shutil
 import traceback
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from config.simulation_config import SimulationConfig
 # ==============================================================================
 # CONFIGURAÇÃO ÚNICA DE AMOSTRAGEM
 # ==============================================================================
-SAMPLING_PERCENTAGE = 50  # % da posição do duto a partir do inlet
+SAMPLING_PERCENTAGE = 60  # % da posição do duto a partir do inlet
 CSV_OUTPUT_PATH = Path("simulation_results.csv")
 
 
@@ -234,15 +235,23 @@ def verify_results():
     z_target = cfg.length * sampling_ratio
     effective_length = cfg.length * (1.0 - sampling_ratio)
 
+    # --- CÁLCULO GERAL DO FATOR DE ATRITO (HAALAND / COLEBROOK-WHITE) ---
+    roughness = getattr(cfg, "roughness_height", 0.0)
+
     if re_num < 2300:
         f_darcy = 64.0 / re_num
         flow_regime = "Laminar (Hagen-Poiseuille)"
-    elif re_num <= 100000:
-        f_darcy = 0.3164 / (re_num ** 0.25)
-        flow_regime = "Turbulent (Blasius)"
     else:
-        f_darcy = 0.0055 * (1.0 + (20000.0 / re_num) ** (1.0 / 3.0))
-        flow_regime = "High-Re Turbulent"
+        rel_roughness = roughness / cfg.diameter
+        term1 = (rel_roughness / 3.7) ** 1.11
+        term2 = 6.9 / re_num
+        inv_sqrt_f = -1.8 * math.log10(term1 + term2)
+        f_darcy = 1.0 / (inv_sqrt_f ** 2)
+
+        if roughness == 0.0:
+            flow_regime = "Turbulent (Haaland - Smooth Pipe)"
+        else:
+            flow_regime = f"Turbulent (Haaland - Rough e/D={rel_roughness:.5f})"
 
     u_avg = cfg.velocity_inlet
 
@@ -262,7 +271,7 @@ def verify_results():
 
     # Pressão cinemática teórica apenas por atrito
     dp_kinematic_friction = dp_friction_pa / cfg.density
-    dp_kinematic_theory = dp_kinematic_friction  # <--- DEFINIDA CORRETAMENTE
+    dp_kinematic_theory = dp_kinematic_friction
 
     run_openfoam_postprocess(case_dir, z_target)
 
@@ -295,7 +304,6 @@ def verify_results():
             "mesh_factor": cfg.mesh_factor,
             "inclination_deg": inclination_deg,
             "reynolds_number": re_num,
-            "flow_regime": flow_regime,
             "pipe_length_m": cfg.length,
             "effective_length_m": effective_length,
             "z_target_m": z_target,
@@ -307,11 +315,9 @@ def verify_results():
             "yplus_max": yplus_data["max"],
             "yplus_avg": yplus_data["avg"],
             "yplus_status": yplus_status,
-            "extraction_method": method_used,
             "num_cores": num_cores,
             "num_cells": num_cells,
             "execution_time": execution_time,
-            "verification": "SUCCESS" if error < 5.0 else "EXCEEDED_5_PERCENT"
         }
 
         save_to_csv(results_data, CSV_OUTPUT_PATH)

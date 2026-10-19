@@ -115,34 +115,61 @@ boundaryField
         f.write(omega_file)
 
     # 5. 0/nut
-    nut_file = get_header("nut") + """
+    roughness = getattr(cfg, "roughness_height", 0.0)
+
+    if roughness > 0.0:
+        # Parede Rugosa
+        wall_bc = f"""walls
+    {{
+        type            nutkRoughWallFunction;
+        Ks              uniform {roughness:.8f};
+        Cs              uniform 0.5;
+        value           uniform 0;
+    }}"""
+    else:
+        # Parede Lisa (Compatível com y+ < 1)
+        wall_bc = """walls
+    {
+        type            nutkWallFunction;
+        value           uniform 0;
+    }"""
+
+    nut_content = f"""/*--------------------------------*- C++ -*----------------------------------*\\
+| =========                 |                                                 |
+| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\\\    /   O peration     | Version:  v2006+                                |
+\\*---------------------------------------------------------------------------*/
+FoamFile
+{{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      nut;
+}}
 dimensions      [0 2 -1 0 0 0 0];
 
 internalField   uniform 0;
 
 boundaryField
-{
+{{
     inlet
-    {
+    {{
         type            calculated;
         value           uniform 0;
-    }
+    }}
     outlet
-    {
+    {{
         type            calculated;
         value           uniform 0;
-    }
-    walls
-    {
-        type            calculated;
-        value           uniform 0;
-    }
-}
+    }}
+    {wall_bc}
+}}
 
 // ************************************************************************* //
 """
+
     with open(case_dir / "0" / "nut", "w", encoding="utf-8") as f:
-        f.write(nut_file)
+        f.write(nut_content)
 
     print(f"Turbulence configurations generated successfully (Re = {reynolds:.2f}).")
 

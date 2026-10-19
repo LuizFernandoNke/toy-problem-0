@@ -30,4 +30,5 @@ template_case/system/planesSample
 # ==========================================
 *.csv
 *.png
+profiles/template_case/
 profiles/
